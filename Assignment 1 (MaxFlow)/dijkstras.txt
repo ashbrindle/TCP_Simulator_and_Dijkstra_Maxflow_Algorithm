@@ -1,0 +1,194 @@
+infinity = 1000000
+invalid_node = -1
+
+class Node:
+    previous = invalid_node
+    distfromsource = infinity
+    visited = False
+
+class Dijkstra:
+
+    def __init__(self):
+        '''initialise class'''
+        self.startnode = 0
+        self.endnode = 0
+        self.network = []
+        self.network_populated = False
+        self.nodetable = []
+        self.nodetable_populated = False
+        self.route = []
+        self.route_populated = False
+        self.currentnode = 0
+
+    # ----- POPULATE NETWORK 2D LIST -----
+    def populate_network(self, filename):
+        self.network_populated = False
+        try:
+            file = open(filename, "r")                          # opens filename passed in to read
+        except IOError:                                         # checks if file exists
+            print "Network file does not exist"
+            return
+
+        for line in file:
+            self.network.append(map(int,
+                                    line.strip().split(',')))    # fills the network 2d list with comma seperated values
+        self.network_populated = True
+        file.close
+
+    # ----- POPULATE NODE TABLE -----
+    def populate_node_table(self):
+    #<--- populate the network data structure --->
+        self.nodetable = []
+        self.nodetable_populated = False
+
+        if not self.network_populated:               # checks if the network has contents first
+            print "Network is empty"
+            return
+
+        for node in self.network:
+            self.nodetable.append(Node())           # populates the node table with the amount of nodes in the network
+
+        self.nodetable[self.startnode].distfromsource = 0
+        self.nodetable[self.startnode].visited = True
+        self.nodetable_populated = True
+
+
+    def parse_route(self, filename):
+    #<--- load the route from a file --->
+        path = []
+        try:
+            with open(filename, 'r') as line:
+                path = line.readline()
+                self.startnode = ord(path[0]) - 65
+                self.endnode = ord(path[2]) - 65
+                self.route_populated = True
+        except IOError:
+            print "Route file does not exist"
+            self.route_populated = False
+
+    def return_near_neighbour(self):
+    #<--- return all unvisited nodes from the current node --->
+
+        nearnodes = []                                              # a list to hold the index's of all nearest nodes
+        for index, edge in enumerate(self.network[self.currentnode]): # through the current node in the network
+            if edge > 0 and not self.nodetable[index].visited:      # checks if the edge has any connections
+                nearnodes.append(index)                             # and is unvisited, then appends index to list
+        return nearnodes                                            # returns results
+
+    def calculate_tentative(self):
+    #<--- calculate the tentative distance of the nearest neighbours in the network --->
+
+        nearest_neighbours = self.return_near_neighbour()
+
+        for neighboursindex in nearest_neighbours:
+            tent_dist = self.nodetable[self.currentnode].distfromsource + self.network[self.currentnode][neighboursindex]
+
+            if tent_dist < self.nodetable[neighboursindex].distfromsource:
+                self.nodetable[neighboursindex].distfromsource = tent_dist
+                self.nodetable[neighboursindex].previous = self.currentnode
+
+    def determine_next_node(self):
+        dist_compare = infinity
+        self.currentnode = invalid_node
+
+        for index, node in enumerate(self.nodetable):
+            if (node.distfromsource < dist_compare) and node.visited == False:
+                dist_compare = node.distfromsource
+                self.currentnode = index
+
+    def calculate_shortest_path(self):
+
+        # self.populate_network("network.csv")
+        # self.parse_route("route.txt")
+        # self.populate_node_table()
+        self.currentnode = self.startnode
+
+        while self.currentnode != self.endnode:
+            self.calculate_tentative()
+            self.determine_next_node()
+            if self.currentnode != invalid_node:
+                self.nodetable[self.currentnode].visited = True
+
+    def return_shortest_path(self):
+        '''return shortest path as list (start->end), and total distance'''
+        self.calculate_shortest_path()
+        curnode = self.endnode
+        while curnode != self.startnode:
+            route.append(chr(curnode + 65))
+            curnode = self.nodetable[curnode].previous
+
+        route.append(chr(self.startnode + 65))
+        route.reverse()
+        print "TOTAL DISTANCE: " + str(self.nodetable[self.endnode].distfromsource)
+        return self.route
+
+class MaxFlow(Dijkstra): #inherits from Dijkstra class
+    def __init__(self):
+        '''initialise class'''
+        Dijkstra.__init__(self)
+        self.original_network = []
+
+    def populate_network(self, filename):
+        '''Dijkstra method + need to make a copy of original network (hint)'''
+        Dijkstra.populate_network(self, filename)
+        self.original_network = [newlist[:] for newlist in self.network]
+
+    def return_near_neighbour(self):
+        '''similar to Dijkstra method, but takes into account the existence and impact of flows'''
+
+        nearnodes = []
+        for index, capacity in enumerate(self.network[self.currentnode]): # index is the position in the node, capacity is the value
+            if capacity > 0 and not self.nodetable[index].visited:
+                nearnodes.append(index)
+        return nearnodes
+
+    def return_bottleneck_flow(self):
+        '''determine the bottleneck flow of a given path'''
+
+        bottleneck = infinity
+        for index, node in enumerate(self.route):
+            if (index + 1) != len(self.route):    # checks if end of path
+                cur_node_path = (ord(self.route[index]) - 65) # current node in the path
+                next_node_path = (ord(self.route[index + 1]) - 65)    # next node in the path
+                flow = self.network[cur_node_path][next_node_path]  # sets the flow to the corisponding node in the network
+
+                if flow < bottleneck:   # checks if that capacity is less than the bottleneck (can fit through the pipe)
+                    bottleneck = flow   # sets the new bottleneck if it fits
+
+        #print "Bottleneck: " + str(bottleneck)
+        return bottleneck, self.route
+
+    def remove_flow_capacity(self):
+        '''remove flow from network and return both the path and the amount removed'''
+        bottleneck, path = self.return_bottleneck_flow()
+
+        for index, node in enumerate(path):
+            if self.nodetable[self.currentnode].previous is not invalid_node and index + 1 != len(path):  # checks if end of path
+                cur_node_path = (ord(path[index]) - 65)  # current node in the path
+                next_node_path = (ord(path[index + 1]) - 65)  # next node in the path
+                print "Current Flow: " + str(self.network[cur_node_path][next_node_path])   # prints current flow
+                self.network[cur_node_path][next_node_path] -= bottleneck   # takes the flow away from the bottlenecks
+                self.network[next_node_path][cur_node_path] += bottleneck  # adds the bottleneck to the reverse flow
+                print "New Flow: " + str(self.network[cur_node_path][next_node_path])   # prints new flow
+
+        print "FLOW PATH: " + str(path)
+        return path, bottleneck # returns the path looked at and the bottleneck of that path
+
+    def return_max_flow(self):
+        '''calculate max flow across network, from start to end, and return both the max flow value and all the relevant paths'''
+        bottleneck = infinity
+
+        while bottleneck != 0:
+            path, bottleneck = self.remove_flow_capacity()
+            for index, node in enumerate(self.nodetable):
+                if index != self.startnode and self.nodetable[index].distfromsource != 0: #not start node and edge has a weight
+                    self.nodetable[index].visited = False   # reset it so it can be viewed again
+
+
+if __name__ == '__main__':
+    m = MaxFlow()
+    m.populate_network("network.txt")
+    m.parse_route("route.txt")
+    m.populate_node_table()
+    m.return_max_flow()
+
